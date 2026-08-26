@@ -1,5 +1,5 @@
 // ==============================================================================
-// TERMOSTATO DIGITAL WEB - JAVASCRIPT FRONTEND & AUTH
+// TERMOSTATO DIGITAL WEB - JAVASCRIPT FRONTEND & AUTHENTICATION
 // ==============================================================================
 
 // Configurações Padrão
@@ -8,7 +8,7 @@ const DEFAULT_SUPABASE_KEY = "sb_publishable_hoi9CeVeffstIg814TiUFw_9knsJkoN";
 
 let supabaseClient = null;
 let currentUser = null;
-let authMode = 'login'; // 'login' ou 'signup'
+let isSignUpMode = false;
 
 let currentConfig = {
     target_temp: 25.0,
@@ -35,8 +35,6 @@ function initSupabase() {
     const savedKey = localStorage.getItem('SUPABASE_KEY') || DEFAULT_SUPABASE_KEY;
 
     if (!savedUrl || !savedKey) {
-        document.getElementById('deviceStatusText').innerText = 'Credenciais Pendentes';
-        document.getElementById('deviceIndicator').className = 'w-2.5 h-2.5 rounded-full bg-amber-500';
         openConfigModal();
         return;
     }
@@ -44,17 +42,15 @@ function initSupabase() {
     try {
         supabaseClient = supabase.createClient(savedUrl, savedKey);
         
-        // Verificar sessão de usuário
+        // Verificar sessão inicial
         checkAuthSession();
 
         // Escutar mudanças de autenticação (Login / Logout)
         supabaseClient.auth.onAuthStateChange((event, session) => {
             currentUser = session?.user || null;
-            updateAuthUI();
+            renderAuthScreenState();
         });
 
-        fetchConfig();
-        fetchTelemetryHistory();
         setupRealtimeSubscription();
     } catch (err) {
         console.error("Erro ao inicializar Supabase:", err);
@@ -62,79 +58,78 @@ function initSupabase() {
 }
 
 // ==============================================================================
-// GESTÃO DE AUTENTICAÇÃO (LOGIN / REGISTRO / LOGOUT)
+// GESTÃO DE ESTADO DA TELA (LOGIN vs DASHBOARD)
 // ==============================================================================
 async function checkAuthSession() {
     if (!supabaseClient) return;
     const { data: { session } } = await supabaseClient.auth.getSession();
     currentUser = session?.user || null;
-    updateAuthUI();
+    renderAuthScreenState();
 }
 
-function updateAuthUI() {
-    const btnLoginHeader = document.getElementById('btnLoginHeader');
-    const userProfileBadge = document.getElementById('userProfileBadge');
+function renderAuthScreenState() {
+    const loginScreen = document.getElementById('loginScreen');
+    const dashboardScreen = document.getElementById('dashboardScreen');
     const userEmailText = document.getElementById('userEmailText');
-    const authLockBadge = document.getElementById('authLockBadge');
 
     if (currentUser) {
-        btnLoginHeader.classList.add('hidden');
-        userProfileBadge.classList.remove('hidden');
-        userProfileBadge.classList.add('flex');
+        // Usuário Autenticado -> Exibir Dashboard
+        loginScreen.classList.add('hidden');
+        dashboardScreen.classList.remove('hidden');
+        dashboardScreen.classList.add('flex');
         userEmailText.innerText = currentUser.email;
-        if (authLockBadge) authLockBadge.classList.add('hidden');
+
+        // Carregar dados do termostato
+        fetchConfig();
+        fetchTelemetryHistory();
     } else {
-        btnLoginHeader.classList.remove('hidden');
-        userProfileBadge.classList.add('hidden');
-        userProfileBadge.classList.remove('flex');
-        if (authLockBadge) authLockBadge.classList.remove('hidden');
+        // Usuário Não Autenticado -> Exibir Apenas Tela de Login
+        loginScreen.classList.remove('hidden');
+        loginScreen.classList.add('flex');
+        dashboardScreen.classList.add('hidden');
+        dashboardScreen.classList.remove('flex');
     }
-}
-
-function openAuthModal(mode = 'login') {
-    authMode = mode;
-    const modal = document.getElementById('authModal');
-    const title = document.getElementById('authModalTitle');
-    const btnSubmit = document.getElementById('btnAuthSubmit');
-    const toggleText = document.getElementById('authToggleText');
-    const toggleBtn = document.getElementById('authToggleBtn');
-    
-    hideAuthMessages();
-
-    if (authMode === 'login') {
-        title.innerText = 'Acessar Painel';
-        btnSubmit.innerText = 'Entrar';
-        toggleText.innerText = 'Ainda não tem conta?';
-        toggleBtn.innerText = 'Criar conta';
-    } else {
-        title.innerText = 'Criar Nova Conta';
-        btnSubmit.innerText = 'Cadastrar';
-        toggleText.innerText = 'Já tem uma conta?';
-        toggleBtn.innerText = 'Fazer Login';
-    }
-
-    modal.classList.remove('hidden');
-}
-
-function closeAuthModal() {
-    document.getElementById('authModal').classList.add('hidden');
 }
 
 function toggleAuthMode() {
-    openAuthModal(authMode === 'login' ? 'signup' : 'login');
+    isSignUpMode = !isSignUpMode;
+    const title = document.getElementById('authTitle');
+    const subtitle = document.getElementById('authSubtitle');
+    const btnSubmit = document.getElementById('btnAuthSubmit');
+    const toggleText = document.getElementById('authToggleText');
+    const toggleBtn = document.getElementById('authToggleBtn');
+
+    hideAuthMessages();
+
+    if (isSignUpMode) {
+        title.innerText = 'Criar Nova Conta';
+        subtitle.innerText = 'Cadastre seu e-mail e senha para ter acesso ao painel';
+        btnSubmit.innerHTML = `<i data-lucide="user-plus" class="w-4 h-4"></i><span>Cadastrar Conta</span>`;
+        toggleText.innerText = 'Já possui uma conta?';
+        toggleBtn.innerText = 'Fazer Login';
+    } else {
+        title.innerText = 'Termostato Digital';
+        subtitle.innerText = 'Faça login para gerenciar o ESP32 e monitorar a temperatura';
+        btnSubmit.innerHTML = `<i data-lucide="log-in" class="w-4 h-4"></i><span>Entrar no Sistema</span>`;
+        toggleText.innerText = 'Ainda não possui acesso?';
+        toggleBtn.innerText = 'Criar nova conta';
+    }
+    lucide.createIcons();
 }
 
 function showAuthError(msg) {
-    const el = document.getElementById('authErrorMessage');
-    el.innerText = msg;
-    el.classList.remove('hidden');
+    const box = document.getElementById('authErrorMessage');
+    document.getElementById('authErrorText').innerText = msg;
+    box.classList.remove('hidden');
+    box.classList.add('flex');
     document.getElementById('authSuccessMessage').classList.add('hidden');
 }
 
 function showAuthSuccess(msg) {
-    const el = document.getElementById('authSuccessMessage');
-    el.innerText = msg;
-    el.classList.remove('hidden');
+    const box = document.getElementById('authSuccessMessage');
+    document.getElementById('authSuccessText').innerText = msg;
+    box.classList.remove('hidden');
+    box.classList.add('flex');
     document.getElementById('authErrorMessage').classList.add('hidden');
 }
 
@@ -150,48 +145,51 @@ async function handleAuthSubmit(e) {
     const email = document.getElementById('authEmail').value.trim();
     const password = document.getElementById('authPassword').value;
     const btnSubmit = document.getElementById('btnAuthSubmit');
-    const originalText = btnSubmit.innerText;
+    const originalContent = btnSubmit.innerHTML;
 
-    btnSubmit.innerText = 'Processando...';
+    btnSubmit.innerHTML = `<span>Processando...</span>`;
     btnSubmit.disabled = true;
     hideAuthMessages();
 
     try {
-        if (authMode === 'login') {
+        if (!isSignUpMode) {
+            // Login
             const { data, error } = await supabaseClient.auth.signInWithPassword({ email, password });
             if (error) throw error;
 
             showAuthSuccess("Login realizado com sucesso!");
             setTimeout(() => {
-                closeAuthModal();
+                currentUser = data.user;
+                renderAuthScreenState();
                 btnSubmit.disabled = false;
-                btnSubmit.innerText = originalText;
-            }, 1000);
+                btnSubmit.innerHTML = originalContent;
+            }, 800);
         } else {
+            // Cadastro
             const { data, error } = await supabaseClient.auth.signUp({ email, password });
             if (error) throw error;
 
-            showAuthSuccess("Conta criada com sucesso! Você já pode fazer login.");
+            showAuthSuccess("Conta criada com sucesso! Você já pode entrar.");
             setTimeout(() => {
-                openAuthModal('login');
+                toggleAuthMode();
                 btnSubmit.disabled = false;
-                btnSubmit.innerText = originalText;
-            }, 1500);
+                btnSubmit.innerHTML = originalContent;
+            }, 1200);
         }
     } catch (err) {
         console.error("Auth error:", err);
-        showAuthError(err.message || "Erro ao processar autenticação.");
+        showAuthError(err.message || "Falha na autenticação. Verifique e-mail e senha.");
         btnSubmit.disabled = false;
-        btnSubmit.innerText = originalText;
+        btnSubmit.innerHTML = originalContent;
     }
 }
 
 async function handleLogout() {
     if (!supabaseClient) return;
-    if (confirm("Deseja realmente sair da sua conta?")) {
+    if (confirm("Deseja realmente sair do painel?")) {
         await supabaseClient.auth.signOut();
         currentUser = null;
-        updateAuthUI();
+        renderAuthScreenState();
     }
 }
 
@@ -199,7 +197,7 @@ async function handleLogout() {
 // BUSCA E ATUALIZAÇÃO DE DADOS
 // ==============================================================================
 async function fetchConfig() {
-    if (!supabaseClient) return;
+    if (!supabaseClient || !currentUser) return;
 
     const { data, error } = await supabaseClient
         .from('thermostat_config')
@@ -283,6 +281,8 @@ function setDeviceStatus(text, isOnline) {
     const statusText = document.getElementById('deviceStatusText');
     const indicator = document.getElementById('deviceIndicator');
 
+    if (!statusText || !indicator) return;
+
     statusText.innerText = text;
     if (isOnline) {
         indicator.className = 'w-2.5 h-2.5 rounded-full bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.8)]';
@@ -305,9 +305,10 @@ function setupRealtimeSubscription() {
             table: 'thermostat_config',
             filter: 'id=eq.main_thermostat'
         }, (payload) => {
-            console.log('[Realtime Update]', payload.new);
             currentConfig = payload.new;
-            updateUI();
+            if (currentUser) {
+                updateUI();
+            }
         })
         .subscribe();
 }
@@ -316,11 +317,6 @@ function setupRealtimeSubscription() {
 // AJUSTES DO USUÁRIO
 // ==============================================================================
 function adjustTarget(amount) {
-    if (!currentUser) {
-        openAuthModal('login');
-        return;
-    }
-
     let newTarget = parseFloat(currentConfig.target_temp) + amount;
     newTarget = Math.round(newTarget * 10) / 10;
     if (newTarget < 0) newTarget = 0;
@@ -331,19 +327,11 @@ function adjustTarget(amount) {
 }
 
 function onHysteresisChange(val) {
-    if (!currentUser) {
-        openAuthModal('login');
-        return;
-    }
     currentConfig.hysteresis = parseFloat(val);
     document.getElementById('hysteresisDisplay').innerHTML = `${parseFloat(val).toFixed(1)} &deg;C`;
 }
 
 function setMode(newMode) {
-    if (!currentUser) {
-        openAuthModal('login');
-        return;
-    }
     currentConfig.mode = newMode;
     document.querySelectorAll('.mode-btn').forEach(btn => btn.classList.remove('active'));
     const btn = document.getElementById(`btn-${newMode}`);
@@ -351,11 +339,6 @@ function setMode(newMode) {
 }
 
 async function saveConfigToSupabase() {
-    if (!currentUser) {
-        openAuthModal('login');
-        return;
-    }
-
     if (!supabaseClient) {
         alert("Supabase não configurado.");
         return;
@@ -405,7 +388,10 @@ async function saveConfigToSupabase() {
 // GRÁFICO HISTÓRICO (CHART.JS)
 // ==============================================================================
 function initChart() {
-    const ctx = document.getElementById('telemetryChart').getContext('2d');
+    const chartCanvas = document.getElementById('telemetryChart');
+    if (!chartCanvas) return;
+
+    const ctx = chartCanvas.getContext('2d');
     telemetryChart = new Chart(ctx, {
         type: 'line',
         data: {
@@ -466,7 +452,7 @@ function initChart() {
 }
 
 async function fetchTelemetryHistory() {
-    if (!supabaseClient) return;
+    if (!supabaseClient || !currentUser) return;
 
     const { data, error } = await supabaseClient
         .from('thermostat_logs')
@@ -479,7 +465,7 @@ async function fetchTelemetryHistory() {
         return;
     }
 
-    if (data && data.length > 0) {
+    if (data && data.length > 0 && telemetryChart) {
         const sorted = data.reverse();
         const labels = sorted.map(item => {
             const date = new Date(item.created_at);
