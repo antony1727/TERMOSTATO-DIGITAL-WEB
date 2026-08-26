@@ -1,0 +1,253 @@
+<!DOCTYPE html>
+<html lang="pt-BR" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Termostato Digital Inteligente | Cloudflare Pages</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            50: '#f0f9ff',
+                            500: '#0ea5e9',
+                            600: '#0284c7',
+                            700: '#0369a1',
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+    <!-- Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <!-- Supabase JS Client -->
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <!-- Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body class="bg-slate-950 text-slate-100 min-h-screen flex flex-col font-sans antialiased selection:bg-sky-500 selection:text-white">
+
+    <!-- Top Navigation Bar -->
+    <header class="border-b border-slate-800/80 bg-slate-900/60 backdrop-blur-md sticky top-0 z-40">
+        <div class="max-w-6xl mx-auto px-4 h-16 flex items-center justify-between">
+            <div class="flex items-center gap-3">
+                <div class="p-2 bg-gradient-to-tr from-sky-500 to-indigo-500 rounded-xl shadow-lg shadow-sky-500/20 text-white">
+                    <i data-lucide="thermometer" class="w-6 h-6"></i>
+                </div>
+                <div>
+                    <h1 class="font-bold text-lg leading-tight tracking-tight">Termostato Digital</h1>
+                    <p class="text-xs text-slate-400">ESP32 Relay X1 &bull; DHT22</p>
+                </div>
+            </div>
+
+            <div class="flex items-center gap-3">
+                <!-- Status Badge -->
+                <div id="deviceBadge" class="flex items-center gap-2 px-3 py-1.5 rounded-full bg-slate-800/90 border border-slate-700/60 text-xs font-medium text-slate-300">
+                    <span id="deviceIndicator" class="w-2.5 h-2.5 rounded-full bg-amber-500 animate-pulse"></span>
+                    <span id="deviceStatusText">Conectando...</span>
+                </div>
+
+                <!-- Settings Button -->
+                <button onclick="openConfigModal()" class="p-2 rounded-xl bg-slate-800/80 hover:bg-slate-700/80 border border-slate-700/60 text-slate-300 hover:text-white transition shadow-sm" title="Configurar Conexão Supabase">
+                    <i data-lucide="settings" class="w-5 h-5"></i>
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Content Container -->
+    <main class="max-w-6xl mx-auto px-4 py-8 flex-1 w-full space-y-8">
+        
+        <!-- Live Gauges & Relay Card Grid -->
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+            
+            <!-- Temperature Card -->
+            <div class="relative overflow-hidden rounded-2xl bg-gradient-to-br from-slate-900 to-slate-900/70 border border-slate-800 p-6 shadow-xl hover:border-sky-500/30 transition duration-300 group">
+                <div class="flex items-center justify-between mb-4">
+                    <span class="text-xs font-bold uppercase tracking-wider text-slate-400">Temperatura Atual</span>
+                    <div class="p-2 bg-sky-500/10 text-sky-400 rounded-lg group-hover:scale-110 transition">
+                        <i data-lucide="thermometer" class="w-5 h-5"></i>
+                    </div>
+                </div>
+                <div class="flex items-baseline gap-2">
+                    <span id="liveTemp" class="text-5xl font-extrabold text-white tracking-tight">--</span>
+                    <span class="text-2xl font-bold text-sky-400">&deg;C</span>
+                </div>
+                <p id="tempDiffText" class="text-xs text-slate-400 mt-2 flex items-center gap-1">
+                    <span>Aguardando telemetria...</span>
+                </p>
+                <div class="absolute -right-8 -bottom-8 w-32 h-32 bg-sky-500/5 rounded-full blur-2xl"></div>
+            </div>
+
+            <!-- Humidity Card -->
+            <div class="relative overflow-hidden rounded-2xl bg-gradient-to-br from-slate-900 to-slate-900/70 border border-slate-800 p-6 shadow-xl hover:border-cyan-500/30 transition duration-300 group">
+                <div class="flex items-center justify-between mb-4">
+                    <span class="text-xs font-bold uppercase tracking-wider text-slate-400">Umidade Relativa</span>
+                    <div class="p-2 bg-cyan-500/10 text-cyan-400 rounded-lg group-hover:scale-110 transition">
+                        <i data-lucide="droplets" class="w-5 h-5"></i>
+                    </div>
+                </div>
+                <div class="flex items-baseline gap-2">
+                    <span id="liveHumidity" class="text-5xl font-extrabold text-white tracking-tight">--</span>
+                    <span class="text-2xl font-bold text-cyan-400">%</span>
+                </div>
+                <p class="text-xs text-slate-400 mt-2 flex items-center gap-1">
+                    <span>Sensor DHT22 de Alta Precisão</span>
+                </p>
+                <div class="absolute -right-8 -bottom-8 w-32 h-32 bg-cyan-500/5 rounded-full blur-2xl"></div>
+            </div>
+
+            <!-- Relay Status Card -->
+            <div class="relative overflow-hidden rounded-2xl bg-gradient-to-br from-slate-900 to-slate-900/70 border border-slate-800 p-6 shadow-xl hover:border-emerald-500/30 transition duration-300 group">
+                <div class="flex items-center justify-between mb-4">
+                    <span class="text-xs font-bold uppercase tracking-wider text-slate-400">Estado do Relé</span>
+                    <div id="relayIconContainer" class="p-2 bg-slate-800 text-slate-400 rounded-lg group-hover:scale-110 transition">
+                        <i data-lucide="power" class="w-5 h-5"></i>
+                    </div>
+                </div>
+                <div class="flex items-center gap-3">
+                    <div id="relayStatusText" class="text-3xl font-extrabold text-slate-400">DESLIGADO</div>
+                </div>
+                <p id="relayActionDesc" class="text-xs text-slate-400 mt-3">
+                    Carga desativada
+                </p>
+                <div id="relayGlow" class="absolute -right-8 -bottom-8 w-32 h-32 bg-slate-700/5 rounded-full blur-2xl transition"></div>
+            </div>
+
+        </div>
+
+        <!-- Thermostat Control Panel -->
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            
+            <!-- Target & Control Settings -->
+            <div class="lg:col-span-1 rounded-2xl bg-slate-900/80 border border-slate-800 p-6 shadow-xl space-y-6">
+                <h2 class="text-base font-bold text-white flex items-center gap-2">
+                    <i data-lucide="sliders" class="w-5 h-5 text-sky-400"></i>
+                    Ajustes de Temperatura
+                </h2>
+
+                <!-- Target Temp Adjuster -->
+                <div class="bg-slate-950/60 rounded-xl p-4 border border-slate-800/80 space-y-3">
+                    <label class="text-xs font-semibold text-slate-400 uppercase tracking-wider block">Temperatura Alvo</label>
+                    <div class="flex items-center justify-between">
+                        <button onclick="adjustTarget(-0.5)" class="w-12 h-12 rounded-xl bg-slate-800 hover:bg-slate-700 active:scale-95 text-xl font-bold flex items-center justify-center transition border border-slate-700 text-white">-</button>
+                        <div class="text-center">
+                            <span id="targetTempDisplay" class="text-4xl font-extrabold text-sky-400">25.0</span>
+                            <span class="text-lg font-bold text-slate-400">&deg;C</span>
+                        </div>
+                        <button onclick="adjustTarget(0.5)" class="w-12 h-12 rounded-xl bg-slate-800 hover:bg-slate-700 active:scale-95 text-xl font-bold flex items-center justify-center transition border border-slate-700 text-white">+</button>
+                    </div>
+                </div>
+
+                <!-- Hysteresis Adjuster -->
+                <div class="bg-slate-950/60 rounded-xl p-4 border border-slate-800/80 space-y-3">
+                    <div class="flex justify-between items-center">
+                        <label class="text-xs font-semibold text-slate-400 uppercase tracking-wider">Histerese (&plusmn;&deg;C)</label>
+                        <span id="hysteresisDisplay" class="text-sm font-bold text-sky-400">1.0 &deg;C</span>
+                    </div>
+                    <input type="range" id="hysteresisSlider" min="0.2" max="5.0" step="0.1" value="1.0" oninput="onHysteresisChange(this.value)" class="w-full h-2 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-sky-500">
+                    <p class="text-[11px] text-slate-400">Margem de tolerância para ligar/desligar o relé sem oscilações.</p>
+                </div>
+
+                <!-- Operating Mode Selection -->
+                <div class="space-y-2">
+                    <label class="text-xs font-semibold text-slate-400 uppercase tracking-wider block">Modo de Operação</label>
+                    <div class="grid grid-cols-2 gap-2">
+                        <button onclick="setMode('AUTO_COOL')" id="btn-AUTO_COOL" class="mode-btn p-3 rounded-xl border border-slate-800 bg-slate-950/80 hover:bg-slate-800 text-xs font-semibold flex flex-col items-center gap-1.5 transition">
+                            <i data-lucide="snowflake" class="w-4 h-4 text-cyan-400"></i>
+                            Auto: Resfriar
+                        </button>
+                        <button onclick="setMode('AUTO_HEAT')" id="btn-AUTO_HEAT" class="mode-btn p-3 rounded-xl border border-slate-800 bg-slate-950/80 hover:bg-slate-800 text-xs font-semibold flex flex-col items-center gap-1.5 transition">
+                            <i data-lucide="flame" class="w-4 h-4 text-orange-400"></i>
+                            Auto: Aquecer
+                        </button>
+                        <button onclick="setMode('MANUAL_ON')" id="btn-MANUAL_ON" class="mode-btn p-3 rounded-xl border border-slate-800 bg-slate-950/80 hover:bg-slate-800 text-xs font-semibold flex flex-col items-center gap-1.5 transition">
+                            <i data-lucide="power" class="w-4 h-4 text-emerald-400"></i>
+                            Forçar Ligado
+                        </button>
+                        <button onclick="setMode('MANUAL_OFF')" id="btn-MANUAL_OFF" class="mode-btn p-3 rounded-xl border border-slate-800 bg-slate-950/80 hover:bg-slate-800 text-xs font-semibold flex flex-col items-center gap-1.5 transition">
+                            <i data-lucide="power-off" class="w-4 h-4 text-rose-400"></i>
+                            Forçar Desligado
+                        </button>
+                    </div>
+                </div>
+
+                <button id="btnSaveConfig" onclick="saveConfigToSupabase()" class="w-full py-3.5 px-4 rounded-xl bg-gradient-to-r from-sky-500 to-indigo-600 hover:from-sky-600 hover:to-indigo-700 active:scale-[0.98] font-bold text-sm shadow-lg shadow-sky-500/25 flex items-center justify-center gap-2 transition text-white">
+                    <i data-lucide="save" class="w-4 h-4"></i>
+                    Salvar Alterações
+                </button>
+            </div>
+
+            <!-- Real-time Chart -->
+            <div class="lg:col-span-2 rounded-2xl bg-slate-900/80 border border-slate-800 p-6 shadow-xl flex flex-col justify-between">
+                <div class="flex items-center justify-between mb-4">
+                    <div>
+                        <h2 class="text-base font-bold text-white flex items-center gap-2">
+                            <i data-lucide="trending-up" class="w-5 h-5 text-sky-400"></i>
+                            Histórico de Temperatura e Umidade
+                        </h2>
+                        <p class="text-xs text-slate-400 mt-0.5">Leituras registradas pelo ESP32</p>
+                    </div>
+                    <button onclick="fetchTelemetryHistory()" class="p-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white transition text-xs flex items-center gap-1.5">
+                        <i data-lucide="refresh-cw" class="w-3.5 h-3.5"></i>
+                        Atualizar
+                    </button>
+                </div>
+
+                <div class="relative w-full h-[320px]">
+                    <canvas id="telemetryChart"></canvas>
+                </div>
+            </div>
+
+        </div>
+
+    </main>
+
+    <!-- Supabase Configuration Modal -->
+    <div id="configModal" class="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4 hidden">
+        <div class="bg-slate-900 border border-slate-800 rounded-2xl max-w-md w-full p-6 shadow-2xl space-y-5 animate-in fade-in zoom-in-95 duration-200">
+            <div class="flex items-center justify-between">
+                <h3 class="text-lg font-bold text-white flex items-center gap-2">
+                    <i data-lucide="database" class="w-5 h-5 text-sky-400"></i>
+                    Configuração do Supabase
+                </h3>
+                <button onclick="closeConfigModal()" class="text-slate-400 hover:text-white">
+                    <i data-lucide="x" class="w-5 h-5"></i>
+                </button>
+            </div>
+            
+            <p class="text-xs text-slate-400">
+                Insira as credenciais do seu projeto Supabase (disponíveis em <i>Project Settings &gt; API</i>).
+            </p>
+
+            <div class="space-y-4">
+                <div>
+                    <label class="text-xs font-semibold text-slate-300 block mb-1.5">Project URL</label>
+                    <input type="text" id="supabaseUrlInput" placeholder="https://xyz.supabase.co" class="w-full px-3.5 py-2.5 rounded-xl bg-slate-950 border border-slate-800 text-sm text-white focus:outline-none focus:border-sky-500 transition">
+                </div>
+                <div>
+                    <label class="text-xs font-semibold text-slate-300 block mb-1.5">Anon Public Key</label>
+                    <input type="password" id="supabaseKeyInput" placeholder="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..." class="w-full px-3.5 py-2.5 rounded-xl bg-slate-950 border border-slate-800 text-sm text-white focus:outline-none focus:border-sky-500 transition">
+                </div>
+            </div>
+
+            <div class="flex gap-3 pt-2">
+                <button onclick="saveSupabaseCredentials()" class="flex-1 py-2.5 rounded-xl bg-sky-500 hover:bg-sky-600 font-semibold text-sm transition text-white">Salvar e Conectar</button>
+                <button onclick="closeConfigModal()" class="px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-sm font-semibold text-slate-300 transition">Cancelar</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Scripts -->
+    <script src="app.js"></script>
+    <script>
+        lucide.createIcons();
+    </script>
+</body>
+</html>
