@@ -6,12 +6,14 @@
 #include <Preferences.h>
 #include <ArduinoJson.h>
 #include <DHT.h>
+#include <WiFiManager.h> // Gerenciador de Wi-Fi dinâmico
 #include "config.h"
 
 // Instâncias
 DHT dht(DHT_PIN, DHT_TYPE);
 WebServer server(80);
 Preferences preferences;
+WiFiManager wm;
 
 // Variáveis de Estado do Sistema
 float currentTemp = 0.0;
@@ -29,7 +31,7 @@ unsigned long lastSupabaseSync = 0;
 unsigned long lastSupabaseLog = 0;
 
 // Protótipos de Funções
-void setupWiFi();
+void setupWiFiManager();
 void setupLocalWebServer();
 void readSensor();
 void processThermostatLogic();
@@ -58,8 +60,8 @@ void setup() {
     // Carregar configurações da memória Flash (NVS)
     loadSavedPreferences();
 
-    // Iniciar Wi-Fi
-    setupWiFi();
+    // Iniciar Gerenciador Wi-Fi (WiFiManager com Captive Portal)
+    setupWiFiManager();
 
     // Iniciar Servidor Web Local (Controle Offline/Local)
     setupLocalWebServer();
@@ -94,6 +96,26 @@ void loop() {
             lastSupabaseLog = currentMillis;
             logTelemetryToSupabase();
         }
+    }
+}
+
+// ==============================================================================
+// WIFIMANAGER (GERENCIADOR DE REDES WI-FI DINÂMICO)
+// ==============================================================================
+void setupWiFiManager() {
+    // Timeout do portal de configuração (180 segundos)
+    // Se não conectar ao Wi-Fi em 3 minutos, continua executando o termostato offline
+    wm.setConfigPortalTimeout(180);
+    wm.setConnectTimeout(30);
+
+    Serial.println("[WIFI] Tentando conectar à rede salva ou iniciando Portal...");
+
+    bool res = wm.autoConnect(AP_NAME, AP_PASSWORD);
+
+    if (!res) {
+        Serial.println("[WIFI AVISO] Falha ao conectar ao Wi-Fi. Operando em Modo Offline!");
+    } else {
+        Serial.println("[WIFI SUCESSO] Conectado! Endereço IP: " + WiFi.localIP().toString());
     }
 }
 
@@ -181,27 +203,8 @@ void savePreferences() {
 }
 
 // ==============================================================================
-// WI-FI & SERVIDOR WEB LOCAL (PAINEL OFFLINE)
+// SERVIDOR WEB LOCAL (PAINEL OFFLINE)
 // ==============================================================================
-void setupWiFi() {
-    WiFi.mode(WIFI_STA);
-    WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
-    Serial.print("[WIFI] Conectando a " + String(WIFI_SSID));
-
-    int attempts = 0;
-    while (WiFi.status() != WL_CONNECTED && attempts < 20) {
-        delay(500);
-        Serial.print(".");
-        attempts++;
-    }
-
-    if (WiFi.status() == WL_CONNECTED) {
-        Serial.println("\n[WIFI] Conectado! Endereço IP Local: " + WiFi.localIP().toString());
-    } else {
-        Serial.println("\n[WIFI AVISO] Não foi possível conectar ao Wi-Fi. Operando 100% Offline.");
-    }
-}
-
 const char LOCAL_HTML_PAGE[] PROGMEM = R"rawliteral(
 <!DOCTYPE html>
 <html lang="pt-BR">
@@ -226,6 +229,7 @@ const char LOCAL_HTML_PAGE[] PROGMEM = R"rawliteral(
         button { width: 100%; padding: 12px; background: #0284c7; color: white; border: none; border-radius: 8px; font-size: 16px; font-weight: bold; cursor: pointer; transition: 0.2s; }
         button:hover { background: #0369a1; }
         .badge { display: inline-block; padding: 4px 8px; border-radius: 6px; font-size: 11px; background: #fbbf24; color: #78350f; font-weight: bold; float: right; }
+        .reset-wifi { display: block; text-align: center; margin-top: 15px; color: #ef4444; text-decoration: none; font-size: 12px; }
     </style>
 </head>
 <body>
@@ -263,6 +267,7 @@ const char LOCAL_HTML_PAGE[] PROGMEM = R"rawliteral(
             </div>
             <button type="submit">Salvar Configura&ccedil;&otilde;es</button>
         </form>
+        <a href="/resetwifi" class="reset-wifi" onclick="return confirm('Deseja resetar as configurações de Wi-Fi e abrir o portal?')">Resetar Rede Wi-Fi</a>
     </div>
     <script>
         function updateData() {
@@ -323,6 +328,14 @@ void setupLocalWebServer() {
         server.send(303);
     });
 
+    // Endpoint para resetar credenciais de Wi-Fi
+    server.on("/resetwifi", HTTP_GET, []() {
+        server.send(200, "text/plain", "Credenciais de Wi-Fi apagadas. Reiniciando em modo Portal...");
+        delay(1000);
+        wm.resetSettings();
+        ESP.restart();
+    });
+
     server.begin();
     Serial.println("[HTTP] Servidor Web Local iniciado na porta 80");
 }
@@ -332,14 +345,13 @@ void setupLocalWebServer() {
 // ==============================================================================
 void syncWithSupabase() {
     if (String(SUPABASE_URL) == "https://SEU_PROJETO.supabase.co") {
-        return; // Não configurado ainda
+        return;
     }
 
     WiFiClientSecure client;
-    client.setInsecure(); // Para conexões HTTPS sem necessidade de carregar certificado raiz
+    client.setInsecure();
     HTTPClient https;
 
-    // 1. GET - Buscar configurações atualizadas do Supabase
     String getUrl = String(SUPABASE_URL) + "/rest/v1/thermostat_config?id=eq.main_thermostat&select=*";
     if (https.begin(client, getUrl)) {
         https.addHeader("apikey", SUPABASE_KEY);
@@ -356,7 +368,6 @@ void syncWithSupabase() {
                 float remoteHyst = config["hysteresis"] | hysteresis;
                 String remoteMode = config["mode"] | systemMode;
 
-                // Se houver alteração remota, atualiza e salva
                 if (remoteTarget != targetTemp || remoteHyst != hysteresis || remoteMode != systemMode) {
                     targetTemp = remoteTarget;
                     hysteresis = remoteHyst;
@@ -370,7 +381,6 @@ void syncWithSupabase() {
         https.end();
     }
 
-    // 2. PATCH - Atualizar estado atual e telemetria em tempo real
     String patchUrl = String(SUPABASE_URL) + "/rest/v1/thermostat_config?id=eq.main_thermostat";
     if (https.begin(client, patchUrl)) {
         https.addHeader("apikey", SUPABASE_KEY);

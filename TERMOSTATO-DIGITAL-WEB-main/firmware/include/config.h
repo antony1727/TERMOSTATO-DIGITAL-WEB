@@ -2,10 +2,10 @@
 #include <Arduino.h>
 
 // ==============================================================================
-// CONFIGURAÇÃO DE REDE WI-FI
+// CONFIGURAÇÃO DO PORTAL WI-FI MANAGER (REDE DE CONFIGURAÇÃO)
 // ==============================================================================
-#define WIFI_SSID       "SEU_WIFI_NOME"      // Coloque aqui o nome da sua rede Wi-Fi 2.4GHz
-#define WIFI_PASSWORD   "SUA_SENHA_WIFI"     // Coloque aqui a senha da sua rede Wi-Fi
+#define AP_NAME         "Termostato-ESP32-Setup"  // Nome da rede Wi-Fi que o ESP32 cria se não conectar
+#define AP_PASSWORD     "12345678"                // Senha da rede Wi-Fi do ESP32
 
 // ==============================================================================
 // CONFIGURAÇÃO DA API SUPABASE (ONLINE REST)
