@@ -1,5 +1,5 @@
 // ==============================================================================
-// TERMOSTATO DIGITAL WEB - JAVASCRIPT FRONTEND
+// TERMOSTATO DIGITAL WEB - JAVASCRIPT FRONTEND & AUTH
 // ==============================================================================
 
 // Configurações Padrão
@@ -7,6 +7,9 @@ const DEFAULT_SUPABASE_URL = "https://dejascgqmovkdbytujde.supabase.co";
 const DEFAULT_SUPABASE_KEY = "sb_publishable_hoi9CeVeffstIg814TiUFw_9knsJkoN";
 
 let supabaseClient = null;
+let currentUser = null;
+let authMode = 'login'; // 'login' ou 'signup'
+
 let currentConfig = {
     target_temp: 25.0,
     hysteresis: 1.0,
@@ -24,8 +27,6 @@ let telemetryChart = null;
 document.addEventListener('DOMContentLoaded', () => {
     initSupabase();
     initChart();
-    
-    // Atualizar a cada 15 segundos se o status do dispositivo continua ativo
     setInterval(checkDeviceOnlineStatus, 15000);
 });
 
@@ -42,12 +43,155 @@ function initSupabase() {
 
     try {
         supabaseClient = supabase.createClient(savedUrl, savedKey);
+        
+        // Verificar sessão de usuário
+        checkAuthSession();
+
+        // Escutar mudanças de autenticação (Login / Logout)
+        supabaseClient.auth.onAuthStateChange((event, session) => {
+            currentUser = session?.user || null;
+            updateAuthUI();
+        });
+
         fetchConfig();
         fetchTelemetryHistory();
         setupRealtimeSubscription();
     } catch (err) {
         console.error("Erro ao inicializar Supabase:", err);
-        alert("Erro ao conectar com o Supabase. Verifique a URL e Chave inseridas.");
+    }
+}
+
+// ==============================================================================
+// GESTÃO DE AUTENTICAÇÃO (LOGIN / REGISTRO / LOGOUT)
+// ==============================================================================
+async function checkAuthSession() {
+    if (!supabaseClient) return;
+    const { data: { session } } = await supabaseClient.auth.getSession();
+    currentUser = session?.user || null;
+    updateAuthUI();
+}
+
+function updateAuthUI() {
+    const btnLoginHeader = document.getElementById('btnLoginHeader');
+    const userProfileBadge = document.getElementById('userProfileBadge');
+    const userEmailText = document.getElementById('userEmailText');
+    const authLockBadge = document.getElementById('authLockBadge');
+
+    if (currentUser) {
+        btnLoginHeader.classList.add('hidden');
+        userProfileBadge.classList.remove('hidden');
+        userProfileBadge.classList.add('flex');
+        userEmailText.innerText = currentUser.email;
+        if (authLockBadge) authLockBadge.classList.add('hidden');
+    } else {
+        btnLoginHeader.classList.remove('hidden');
+        userProfileBadge.classList.add('hidden');
+        userProfileBadge.classList.remove('flex');
+        if (authLockBadge) authLockBadge.classList.remove('hidden');
+    }
+}
+
+function openAuthModal(mode = 'login') {
+    authMode = mode;
+    const modal = document.getElementById('authModal');
+    const title = document.getElementById('authModalTitle');
+    const btnSubmit = document.getElementById('btnAuthSubmit');
+    const toggleText = document.getElementById('authToggleText');
+    const toggleBtn = document.getElementById('authToggleBtn');
+    
+    hideAuthMessages();
+
+    if (authMode === 'login') {
+        title.innerText = 'Acessar Painel';
+        btnSubmit.innerText = 'Entrar';
+        toggleText.innerText = 'Ainda não tem conta?';
+        toggleBtn.innerText = 'Criar conta';
+    } else {
+        title.innerText = 'Criar Nova Conta';
+        btnSubmit.innerText = 'Cadastrar';
+        toggleText.innerText = 'Já tem uma conta?';
+        toggleBtn.innerText = 'Fazer Login';
+    }
+
+    modal.classList.remove('hidden');
+}
+
+function closeAuthModal() {
+    document.getElementById('authModal').classList.add('hidden');
+}
+
+function toggleAuthMode() {
+    openAuthModal(authMode === 'login' ? 'signup' : 'login');
+}
+
+function showAuthError(msg) {
+    const el = document.getElementById('authErrorMessage');
+    el.innerText = msg;
+    el.classList.remove('hidden');
+    document.getElementById('authSuccessMessage').classList.add('hidden');
+}
+
+function showAuthSuccess(msg) {
+    const el = document.getElementById('authSuccessMessage');
+    el.innerText = msg;
+    el.classList.remove('hidden');
+    document.getElementById('authErrorMessage').classList.add('hidden');
+}
+
+function hideAuthMessages() {
+    document.getElementById('authErrorMessage').classList.add('hidden');
+    document.getElementById('authSuccessMessage').classList.add('hidden');
+}
+
+async function handleAuthSubmit(e) {
+    e.preventDefault();
+    if (!supabaseClient) return;
+
+    const email = document.getElementById('authEmail').value.trim();
+    const password = document.getElementById('authPassword').value;
+    const btnSubmit = document.getElementById('btnAuthSubmit');
+    const originalText = btnSubmit.innerText;
+
+    btnSubmit.innerText = 'Processando...';
+    btnSubmit.disabled = true;
+    hideAuthMessages();
+
+    try {
+        if (authMode === 'login') {
+            const { data, error } = await supabaseClient.auth.signInWithPassword({ email, password });
+            if (error) throw error;
+
+            showAuthSuccess("Login realizado com sucesso!");
+            setTimeout(() => {
+                closeAuthModal();
+                btnSubmit.disabled = false;
+                btnSubmit.innerText = originalText;
+            }, 1000);
+        } else {
+            const { data, error } = await supabaseClient.auth.signUp({ email, password });
+            if (error) throw error;
+
+            showAuthSuccess("Conta criada com sucesso! Você já pode fazer login.");
+            setTimeout(() => {
+                openAuthModal('login');
+                btnSubmit.disabled = false;
+                btnSubmit.innerText = originalText;
+            }, 1500);
+        }
+    } catch (err) {
+        console.error("Auth error:", err);
+        showAuthError(err.message || "Erro ao processar autenticação.");
+        btnSubmit.disabled = false;
+        btnSubmit.innerText = originalText;
+    }
+}
+
+async function handleLogout() {
+    if (!supabaseClient) return;
+    if (confirm("Deseja realmente sair da sua conta?")) {
+        await supabaseClient.auth.signOut();
+        currentUser = null;
+        updateAuthUI();
     }
 }
 
@@ -75,7 +219,6 @@ async function fetchConfig() {
 }
 
 function updateUI() {
-    // 1. Atualizar Temperatura e Umidade Atual
     if (currentConfig.current_temp !== null && currentConfig.current_temp !== undefined) {
         document.getElementById('liveTemp').innerText = Number(currentConfig.current_temp).toFixed(1);
     }
@@ -83,14 +226,12 @@ function updateUI() {
         document.getElementById('liveHumidity').innerText = Number(currentConfig.current_humidity).toFixed(1);
     }
 
-    // 2. Atualizar Diferença de Temperatura Alvo
     if (currentConfig.current_temp !== null && currentConfig.target_temp !== null) {
         const diff = (currentConfig.current_temp - currentConfig.target_temp).toFixed(1);
         const diffSymbol = diff > 0 ? `+${diff}` : `${diff}`;
         document.getElementById('tempDiffText').innerHTML = `<span>Diferen&ccedil;a do Alvo: <strong>${diffSymbol} &deg;C</strong></span>`;
     }
 
-    // 3. Atualizar Relé
     const relayText = document.getElementById('relayStatusText');
     const relayIcon = document.getElementById('relayIconContainer');
     const relayDesc = document.getElementById('relayActionDesc');
@@ -110,17 +251,14 @@ function updateUI() {
         relayGlow.className = 'absolute -right-8 -bottom-8 w-32 h-32 bg-slate-700/5 rounded-full blur-2xl transition';
     }
 
-    // 4. Atualizar Ajustes
     document.getElementById('targetTempDisplay').innerText = Number(currentConfig.target_temp).toFixed(1);
     document.getElementById('hysteresisDisplay').innerHTML = `${Number(currentConfig.hysteresis).toFixed(1)} &deg;C`;
     document.getElementById('hysteresisSlider').value = currentConfig.hysteresis;
 
-    // 5. Botões de Modo
     document.querySelectorAll('.mode-btn').forEach(btn => btn.classList.remove('active'));
     const activeBtn = document.getElementById(`btn-${currentConfig.mode}`);
     if (activeBtn) activeBtn.classList.add('active');
 
-    // 6. Verificar status online
     checkDeviceOnlineStatus();
 }
 
@@ -178,6 +316,11 @@ function setupRealtimeSubscription() {
 // AJUSTES DO USUÁRIO
 // ==============================================================================
 function adjustTarget(amount) {
+    if (!currentUser) {
+        openAuthModal('login');
+        return;
+    }
+
     let newTarget = parseFloat(currentConfig.target_temp) + amount;
     newTarget = Math.round(newTarget * 10) / 10;
     if (newTarget < 0) newTarget = 0;
@@ -188,11 +331,19 @@ function adjustTarget(amount) {
 }
 
 function onHysteresisChange(val) {
+    if (!currentUser) {
+        openAuthModal('login');
+        return;
+    }
     currentConfig.hysteresis = parseFloat(val);
     document.getElementById('hysteresisDisplay').innerHTML = `${parseFloat(val).toFixed(1)} &deg;C`;
 }
 
 function setMode(newMode) {
+    if (!currentUser) {
+        openAuthModal('login');
+        return;
+    }
     currentConfig.mode = newMode;
     document.querySelectorAll('.mode-btn').forEach(btn => btn.classList.remove('active'));
     const btn = document.getElementById(`btn-${newMode}`);
@@ -200,8 +351,13 @@ function setMode(newMode) {
 }
 
 async function saveConfigToSupabase() {
+    if (!currentUser) {
+        openAuthModal('login');
+        return;
+    }
+
     if (!supabaseClient) {
-        alert("Supabase não configurado. Clique no ícone de engrenagem para configurar.");
+        alert("Supabase não configurado.");
         return;
     }
 
