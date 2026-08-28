@@ -15,6 +15,9 @@
             darkMode: 'class',
             theme: {
                 extend: {
+                    screens: {
+                        'xs': '375px',
+                    },
                     colors: {
                         brand: {
                             500: '#0ea5e9',
@@ -31,12 +34,12 @@
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <!-- Chart.js -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    <link rel="stylesheet" href="style.css?t=20260828v2">
+    <link rel="stylesheet" href="style.css?v=20260828v3">
 </head>
 <body class="bg-[#090d16] text-slate-100 min-h-[100dvh] flex flex-col font-sans antialiased overflow-x-hidden selection:bg-sky-500 selection:text-white pb-safe">
 
     <!-- ===================================================================== -->
-    <!-- TELA 1: LOGIN RESTRITO (STANDARDS: MOBILE-FIRST & 44PX TOUCH TARGETS) -->
+    <!-- TELA 1: LOGIN RESTRITO                                                -->
     <!-- ===================================================================== -->
     <div id="loginScreen" class="min-h-[100dvh] w-full flex items-center justify-center p-4 sm:p-6 bg-gradient-to-b from-slate-900 via-[#090d16] to-[#090d16] relative">
         <div class="w-full max-w-sm rounded-2xl bg-slate-900/90 border border-slate-800 p-6 sm:p-8 shadow-2xl backdrop-blur-md space-y-6">
@@ -89,35 +92,46 @@
 
 
     <!-- ===================================================================== -->
-    <!-- TELA 2: DASHBOARD FLUIDO E RESPONSIVO (COMPLIANT COM A SKILL)         -->
+    <!-- TELA 2: DASHBOARD COM HEADER 100% BLINDADO CONTRA OVERFLOW            -->
     <!-- ===================================================================== -->
     <div id="dashboardScreen" class="hidden min-h-[100dvh] flex-col flex-1 w-full max-w-full overflow-x-hidden">
         
-        <!-- Header Seguro e Compacto -->
-        <header class="w-full border-b border-slate-800/80 bg-slate-900/90 backdrop-blur-md sticky top-0 z-40 px-3 py-2.5 sm:px-6">
-            <div class="max-w-5xl mx-auto flex items-center justify-between gap-2">
+        <!-- Header Seguro, Fluido e sem Quebras -->
+        <header class="w-full border-b border-slate-800/80 bg-slate-900/95 backdrop-blur-md sticky top-0 z-40 px-3 sm:px-6 py-2.5">
+            <div class="max-w-5xl mx-auto flex items-center justify-between gap-2 w-full">
                 
-                <!-- Logo & Título -->
-                <div class="flex items-center gap-2 min-w-0">
-                    <div class="p-2 bg-gradient-to-tr from-sky-500 to-indigo-600 rounded-xl text-white shrink-0">
+                <!-- Lado Esquerdo: Logo & Nome -->
+                <div class="flex items-center gap-2 min-w-0 shrink">
+                    <div class="p-2 bg-gradient-to-tr from-sky-500 to-indigo-600 rounded-xl text-white shrink-0 shadow-sm shadow-sky-500/20">
                         <i data-lucide="thermometer" class="w-4 h-4 sm:w-5 sm:h-5"></i>
                     </div>
                     <div class="min-w-0">
-                        <h1 class="font-bold text-xs sm:text-sm leading-tight text-white truncate">Termostato Digital</h1>
+                        <h1 class="font-black text-xs sm:text-sm leading-tight text-white truncate">Termostato Digital</h1>
                         <p class="text-[10px] text-slate-400 truncate">ESP32 &bull; DHT22</p>
                     </div>
                 </div>
 
-                <!-- Status Badge e Logout -->
-                <div class="flex items-center gap-2 shrink-0">
-                    <div id="deviceBadge" class="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-slate-800 border border-slate-700 text-[10px] sm:text-xs font-medium text-slate-300">
-                        <span id="deviceIndicator" class="w-2 h-2 rounded-full bg-amber-500 animate-pulse shrink-0"></span>
-                        <span id="deviceStatusText" class="truncate max-w-[90px] sm:max-w-none">ESP32 Online</span>
+                <!-- Lado Direito: Status e Logout -->
+                <div class="flex items-center gap-1.5 sm:gap-2 shrink-0">
+                    
+                    <!-- Status Badge Compacto -->
+                    <div id="deviceBadge" class="flex items-center gap-1.5 px-2 py-1 rounded-full bg-slate-800/90 border border-slate-700/80 text-[10px] sm:text-xs font-semibold text-slate-300">
+                        <span id="deviceIndicator" class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse shrink-0"></span>
+                        <span id="deviceStatusText">Online</span>
                     </div>
 
-                    <button onclick="handleLogout()" class="min-h-[36px] min-w-[36px] p-2 rounded-xl bg-slate-800 hover:bg-rose-500/20 border border-slate-700 text-slate-300 hover:text-rose-400 transition touch-manipulation flex items-center justify-center" title="Sair">
-                        <i data-lucide="log-out" class="w-4 h-4"></i>
+                    <!-- Email do Usuário (apenas em telas maiores para não quebrar no celular) -->
+                    <div class="hidden md:flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-slate-800/60 border border-slate-700/60 text-xs text-slate-300">
+                        <i data-lucide="user-check" class="w-3.5 h-3.5 text-emerald-400"></i>
+                        <span id="userEmailText" class="max-w-[120px] truncate">admin</span>
+                    </div>
+
+                    <!-- Botão Logout Touch Friendly -->
+                    <button onclick="handleLogout()" class="min-h-[36px] min-w-[36px] px-2.5 py-1.5 rounded-xl bg-slate-800/90 hover:bg-rose-500/20 border border-slate-700/80 hover:border-rose-500/40 text-slate-300 hover:text-rose-400 transition touch-manipulation flex items-center justify-center gap-1.5" title="Sair da Conta">
+                        <i data-lucide="log-out" class="w-3.5 h-3.5 sm:w-4 sm:h-4"></i>
+                        <span class="text-xs font-semibold hidden sm:inline">Sair</span>
                     </button>
+
                 </div>
 
             </div>
@@ -273,7 +287,7 @@
     </div>
 
     <!-- Scripts com Cache-Busting -->
-    <script src="app.js?t=20260828v2"></script>
+    <script src="app.js?v=20260828v3"></script>
     <script>
         lucide.createIcons();
     </script>
