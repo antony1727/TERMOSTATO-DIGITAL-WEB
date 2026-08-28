@@ -1,14 +1,12 @@
 // ==============================================================================
-// TERMOSTATO DIGITAL WEB - JAVASCRIPT FRONTEND & AUTHENTICATION
+// TERMOSTATO DIGITAL WEB - JAVASCRIPT FRONTEND & RESTRICTED AUTH
 // ==============================================================================
 
-// Configurações Padrão
-const DEFAULT_SUPABASE_URL = "https://dejascgqmovkdbytujde.supabase.co";
-const DEFAULT_SUPABASE_KEY = "sb_publishable_hoi9CeVeffstIg814TiUFw_9knsJkoN";
+const SUPABASE_URL = "https://dejascgqmovkdbytujde.supabase.co";
+const SUPABASE_KEY = "sb_publishable_hoi9CeVeffstIg814TiUFw_9knsJkoN";
 
 let supabaseClient = null;
 let currentUser = null;
-let isSignUpMode = false;
 
 let currentConfig = {
     target_temp: 25.0,
@@ -31,21 +29,13 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 
 function initSupabase() {
-    const savedUrl = localStorage.getItem('SUPABASE_URL') || DEFAULT_SUPABASE_URL;
-    const savedKey = localStorage.getItem('SUPABASE_KEY') || DEFAULT_SUPABASE_KEY;
-
-    if (!savedUrl || !savedKey) {
-        openConfigModal();
-        return;
-    }
-
     try {
-        supabaseClient = supabase.createClient(savedUrl, savedKey);
+        supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
         
-        // Verificar sessão inicial
+        // Checagem de sessão existente
         checkAuthSession();
 
-        // Escutar mudanças de autenticação (Login / Logout)
+        // Monitorar evento de Login / Logout
         supabaseClient.auth.onAuthStateChange((event, session) => {
             currentUser = session?.user || null;
             renderAuthScreenState();
@@ -58,7 +48,7 @@ function initSupabase() {
 }
 
 // ==============================================================================
-// GESTÃO DE ESTADO DA TELA (LOGIN vs DASHBOARD)
+// GESTÃO DE ESTADO DA TELA (LOGIN RESTRITO vs DASHBOARD)
 // ==============================================================================
 async function checkAuthSession() {
     if (!supabaseClient) return;
@@ -79,42 +69,16 @@ function renderAuthScreenState() {
         dashboardScreen.classList.add('flex');
         userEmailText.innerText = currentUser.email;
 
-        // Carregar dados do termostato
+        // Carregar dados
         fetchConfig();
         fetchTelemetryHistory();
     } else {
-        // Usuário Não Autenticado -> Exibir Apenas Tela de Login
+        // Usuário Não Autenticado -> Exibir Apenas Tela de Login Restrito
         loginScreen.classList.remove('hidden');
         loginScreen.classList.add('flex');
         dashboardScreen.classList.add('hidden');
         dashboardScreen.classList.remove('flex');
     }
-}
-
-function toggleAuthMode() {
-    isSignUpMode = !isSignUpMode;
-    const title = document.getElementById('authTitle');
-    const subtitle = document.getElementById('authSubtitle');
-    const btnSubmit = document.getElementById('btnAuthSubmit');
-    const toggleText = document.getElementById('authToggleText');
-    const toggleBtn = document.getElementById('authToggleBtn');
-
-    hideAuthMessages();
-
-    if (isSignUpMode) {
-        title.innerText = 'Criar Nova Conta';
-        subtitle.innerText = 'Cadastre seu e-mail e senha para ter acesso ao painel';
-        btnSubmit.innerHTML = `<i data-lucide="user-plus" class="w-4 h-4"></i><span>Cadastrar Conta</span>`;
-        toggleText.innerText = 'Já possui uma conta?';
-        toggleBtn.innerText = 'Fazer Login';
-    } else {
-        title.innerText = 'Termostato Digital';
-        subtitle.innerText = 'Faça login para gerenciar o ESP32 e monitorar a temperatura';
-        btnSubmit.innerHTML = `<i data-lucide="log-in" class="w-4 h-4"></i><span>Entrar no Sistema</span>`;
-        toggleText.innerText = 'Ainda não possui acesso?';
-        toggleBtn.innerText = 'Criar nova conta';
-    }
-    lucide.createIcons();
 }
 
 function showAuthError(msg) {
@@ -147,38 +111,25 @@ async function handleAuthSubmit(e) {
     const btnSubmit = document.getElementById('btnAuthSubmit');
     const originalContent = btnSubmit.innerHTML;
 
-    btnSubmit.innerHTML = `<span>Processando...</span>`;
+    btnSubmit.innerHTML = `<span>Autenticando...</span>`;
     btnSubmit.disabled = true;
     hideAuthMessages();
 
     try {
-        if (!isSignUpMode) {
-            // Login
-            const { data, error } = await supabaseClient.auth.signInWithPassword({ email, password });
-            if (error) throw error;
+        const { data, error } = await supabaseClient.auth.signInWithPassword({ email, password });
+        if (error) throw error;
 
-            showAuthSuccess("Login realizado com sucesso!");
-            setTimeout(() => {
-                currentUser = data.user;
-                renderAuthScreenState();
-                btnSubmit.disabled = false;
-                btnSubmit.innerHTML = originalContent;
-            }, 800);
-        } else {
-            // Cadastro
-            const { data, error } = await supabaseClient.auth.signUp({ email, password });
-            if (error) throw error;
+        showAuthSuccess("Acesso concedido!");
+        setTimeout(() => {
+            currentUser = data.user;
+            renderAuthScreenState();
+            btnSubmit.disabled = false;
+            btnSubmit.innerHTML = originalContent;
+        }, 600);
 
-            showAuthSuccess("Conta criada com sucesso! Você já pode entrar.");
-            setTimeout(() => {
-                toggleAuthMode();
-                btnSubmit.disabled = false;
-                btnSubmit.innerHTML = originalContent;
-            }, 1200);
-        }
     } catch (err) {
         console.error("Auth error:", err);
-        showAuthError(err.message || "Falha na autenticação. Verifique e-mail e senha.");
+        showAuthError("Credenciais inválidas. Verifique o e-mail e senha.");
         btnSubmit.disabled = false;
         btnSubmit.innerHTML = originalContent;
     }
@@ -339,10 +290,7 @@ function setMode(newMode) {
 }
 
 async function saveConfigToSupabase() {
-    if (!supabaseClient) {
-        alert("Supabase não configurado.");
-        return;
-    }
+    if (!supabaseClient || !currentUser) return;
 
     const saveBtn = document.getElementById('btnSaveConfig');
     const originalText = saveBtn.innerHTML;
@@ -479,32 +427,4 @@ async function fetchTelemetryHistory() {
         telemetryChart.data.datasets[1].data = humids;
         telemetryChart.update();
     }
-}
-
-// ==============================================================================
-// MODAL DE CONFIGURAÇÃO DO SUPABASE
-// ==============================================================================
-function openConfigModal() {
-    document.getElementById('supabaseUrlInput').value = localStorage.getItem('SUPABASE_URL') || DEFAULT_SUPABASE_URL;
-    document.getElementById('supabaseKeyInput').value = localStorage.getItem('SUPABASE_KEY') || DEFAULT_SUPABASE_KEY;
-    document.getElementById('configModal').classList.remove('hidden');
-}
-
-function closeConfigModal() {
-    document.getElementById('configModal').classList.add('hidden');
-}
-
-function saveSupabaseCredentials() {
-    const url = document.getElementById('supabaseUrlInput').value.trim();
-    const key = document.getElementById('supabaseKeyInput').value.trim();
-
-    if (!url || !key) {
-        alert("Por favor, preencha a URL e a Anon Key.");
-        return;
-    }
-
-    localStorage.setItem('SUPABASE_URL', url);
-    localStorage.setItem('SUPABASE_KEY', key);
-    closeConfigModal();
-    initSupabase();
 }
