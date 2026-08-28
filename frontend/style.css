@@ -1,0 +1,71 @@
+/* ==========================================================================
+   TERMOSTATO DIGITAL - MOBILE FIRST STYLES
+   ========================================================================== */
+
+/* Safe area support for iOS / Android gestures */
+:root {
+    --sat: env(safe-area-inset-top);
+    --sar: env(safe-area-inset-right);
+    --sab: env(safe-area-inset-bottom);
+    --sal: env(safe-area-inset-left);
+}
+
+.pb-safe {
+    padding-bottom: env(safe-area-inset-bottom, 16px);
+}
+
+/* Touch manipulation prevents 300ms tap delay and accidental zoom */
+button, input, select, a {
+    touch-action: manipulation;
+}
+
+/* Modo ativo de botões */
+.mode-btn.active {
+    border-color: #0ea5e9 !important;
+    background: rgba(14, 165, 233, 0.18) !important;
+    color: #38bdf8 !important;
+    box-shadow: 0 0 15px rgba(14, 165, 233, 0.25);
+}
+
+.mode-btn {
+    -webkit-tap-highlight-color: transparent;
+}
+
+/* Custom Slider Styling for Mobile Touch */
+input[type=range]::-webkit-slider-thumb {
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    background: #0ea5e9;
+    cursor: pointer;
+    box-shadow: 0 0 10px rgba(14, 165, 233, 0.5);
+    -webkit-appearance: none;
+}
+
+input[type=range]::-moz-range-thumb {
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    background: #0ea5e9;
+    cursor: pointer;
+    box-shadow: 0 0 10px rgba(14, 165, 233, 0.5);
+}
+
+/* Custom Scrollbar */
+::-webkit-scrollbar {
+    width: 4px;
+    height: 4px;
+}
+
+::-webkit-scrollbar-track {
+    background: #020617;
+}
+
+::-webkit-scrollbar-thumb {
+    background: #1e293b;
+    border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background: #334155;
+}
